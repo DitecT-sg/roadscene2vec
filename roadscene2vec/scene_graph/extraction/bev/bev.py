@@ -1,7 +1,14 @@
+"""
+Note that this is a modified BEV manual labeling tool which allows you to label each video and save its unique 
+BEV projection. At the same time, you define the number of steps you want to use, you can save
+multiple configuration for the same video at different frame.
+
+"""
+
 import json
 import math
 from pathlib import Path
-
+import os
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -106,9 +113,22 @@ class BEV():
         for k in self.params.keys():
             metadata[k] = self.params[k]
 
+        # Check if JSON file exists and has content
+        if Path(fname).is_file() and os.path.getsize(fname) > 0:  # Check size to ensure it's not empty
+            with open(fname, 'r') as f:
+                try:
+                    existing_data = json.load(f)  # Load existing data
+                except json.JSONDecodeError:
+                    existing_data = {}  # Handle corrupted or empty JSON file
+        else:
+            existing_data = {}
+
+        # Add or update the current file's parameters
+        existing_data[self.fname] = metadata
+
         with open(fname, 'w') as f:
-            json.dump(metadata, f, indent=4)
-            print('- saved params to {}'.format(fname))
+            json.dump(existing_data, f, indent=4)
+            print(f'- Saved params for {self.fname} to {fname}')
 
     def load_params(self, fname):
         with open(fname, 'r') as f:
@@ -230,9 +250,27 @@ class BEV():
         self.show_instructions()
         plt.show()
 
+def calibrate_at_multiple_frames(base_dir, interval):
+    """
+    Calibrate images in video folders at multiple frames based on a customized interval
+    
+    Args:
+        base_dir (str): The base directory containing video folders.
+        interval (int): The number of images to skip between calibrations.
+    """
+    for video_folder in os.listdir(base_dir):
+        video_folder_path = os.path.join(base_dir, video_folder)
+        raw_images_path = os.path.join(video_folder_path, 'raw_images')   
+        if os.path.exists(raw_images_path):     
+            image_files = sorted(os.listdir(raw_images_path))
+            for i, img_file in enumerate(image_files):
+                if i % interval == 0:  
+                    img_path = os.path.join(raw_images_path, img_file)
+                    bev = BEV(img_path, mode='calibrate')
+                    bev.calibrate()
+                    print(f"Calibrated image: {img_path}")
+
 if __name__ == '__main__':
-    ap = ArgumentParser(description='The parameters for training.')
-    ap.add_argument('--cal_im_path', type=str, default='/media/NAS-temp/louisccc/av/synthesis_data/1043_carla/22_lanechange/raw_images/00097095.jpg', help="The path defining location of image used to calibrate BEV.")
-    path = ap.parse_args().cal_im_path
-    bev = BEV(path, mode='calibrate')
-    bev.calibrate()
+    base_dir = "/Users/hiro/Desktop/roadscene2vec/roadscene2vec/scene_graph/extraction/bev/test_auto"
+    interval = 20  
+    calibrate_at_multiple_frames(base_dir, interval)
